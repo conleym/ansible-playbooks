@@ -1,0 +1,108 @@
+---
+- name: Install python packages for user
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  become: no
+
+  vars:
+    python_all_packages_latest:
+      # ansible
+      - ansible
+      - jinja2
+      - psycopg2
+      - netaddr
+
+
+      # AWS things
+      - awscli
+      - awsebcli
+      - aws-sam-cli
+      - aws-shell
+      - boto
+      - boto3
+      - botocore
+
+      # Python dev stuff
+      - docutils
+      - format-sql
+      - setuptools
+      - Sphinx
+      - virtualenvwrapper
+      - wheel
+      - pypiserver
+      - pipdeptree
+
+      # These are used by elpy.
+      - autopep8
+      - flake8
+      - importmagic
+      - jedi # offers a choice of either rope or jedi. Let's have both though.
+      - rope
+      - yapf
+
+    python_27_packages_latest: []
+
+    python_3_packages_latest:
+      # Command line utils
+      - thefuck
+
+      # Python dev stuff
+      - black
+
+
+    python_all_packages_versioned: {}
+#      ansible: 2.3.2.0
+#      Jinja2: 2.9.6
+
+    python_27_packages_versioned: {}
+    python_3_packages_versioned: {}
+
+
+  tasks:
+    - name: Fail if inside a virtualenv
+      fail:
+        msg: Cannot run inside a virtualenv
+      when: ansible_env.VIRTUAL_ENV is defined
+
+    - name: Check python version
+      set_fact:
+        is_python_27: "{{ ansible_python_version is version_compare(3, '<')}}"
+
+    - set_fact:
+        python_packages_latest: "{{ python_all_packages_latest + python_27_packages_latest }}"
+        python_packages_versioned: "{{ python_all_packages_versioned | combine(python_27_packages_versioned) }}"
+      when: is_python_27|bool
+
+    - set_fact:
+        python_packages_latest: "{{ python_all_packages_latest + python_3_packages_latest }}"
+        python_packages_versioned: "{{ python_all_packages_versioned | combine(python_3_packages_versioned) }}"
+      when: not is_python_27
+
+
+    # Use explicit `pip` executable, since we're always using port
+    # select, but ansible wants to use `pip3` when it finds we're using
+    # python 3.
+
+    - name: Upgrade pip
+      pip:
+        name: pip
+        executable: pip
+        state: latest
+        extra_args: --user
+
+    - name: Install the latest version of selected packages
+      pip:
+        name: "{{ python_packages_latest }}"
+        executable: pip
+        state: latest
+        extra_args: --user
+
+    - name: Install packages with explicit versions
+      pip:
+        name: "{{ item.key }}"
+        executable: pip
+        state: present
+        version: "{{ item.value }}"
+        extra_args: --user
+      with_dict: "{{ python_packages_versioned }}"
